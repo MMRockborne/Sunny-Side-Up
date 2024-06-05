@@ -1,0 +1,102 @@
+import requests
+import pandas as pd
+from datetime import datetime, timedelta
+
+# Function to fetch weather data for the next 10 days for a single city
+def fetch_10_day_forecast(city, api_key):
+    base_url = 'http://api.weatherapi.com/v1'
+    url = f"{base_url}/forecast.json?key={api_key}&q={city}&days=10"
+    response = requests.get(url)
+    data = response.json()
+    
+    # Check if the response contains the necessary forecast data
+    if 'forecast' in data and 'forecastday' in data['forecast']:
+        forecast_data = data['forecast']['forecastday']
+        extracted_data = []
+        
+        for day in forecast_data:
+            date = day['date']
+            temp = day['day']['avgtemp_c']
+            humidity = day['day']['avghumidity']
+            cloudiness = day['day']['condition']['text']
+            wind_speed = day['day']['maxwind_kph']
+            
+            extracted_data.append({
+                'city': city,
+                'date': date,
+                'temp': temp,
+                'humidity': humidity,
+                'condition': cloudiness,
+                'wind_speed': wind_speed
+            })
+        
+        return pd.DataFrame(extracted_data)
+    else:
+        print(f"No forecast data available for {city}")
+        return pd.DataFrame()
+
+# Function to find the best 7 consecutive days based on specific filters
+def find_best_7_days(forecast_df, criteria='temp'):
+    best_city = None
+    best_start_date = None
+    best_average = float('-inf') if criteria == 'temp' else float('inf')
+    
+    for city in forecast_df['city'].unique():
+        city_df = forecast_df[forecast_df['city'] == city]
+        
+        # Ensure the dates are sorted
+        city_df = city_df.sort_values(by='date')
+        
+        # Iterate over possible 7-day windows
+        for i in range(len(city_df) - 6):
+            window = city_df.iloc[i:i+7]
+            
+            if criteria == 'temp':
+                average = window['temp'].mean()
+                if average > best_average:
+                    best_average = average
+                    best_city = city
+                    best_start_date = window.iloc[0]['date']
+            elif criteria == 'humidity':
+                average = window['humidity'].mean()
+                if average < best_average:
+                    best_average = average
+                    best_city = city
+                    best_start_date = window.iloc[0]['date']
+            elif criteria == 'wind_speed':
+                average = window['wind_speed'].mean()
+                if average < best_average:
+                    best_average = average
+                    best_city = city
+                    best_start_date = window.iloc[0]['date']
+    
+    return best_city, best_start_date, best_average
+
+# List of cities
+cities = ['Athens', 'Corfu', 'Crete', 'Zante', 'Mykonos']
+
+# API key
+api_key = weather_key  # Replace with your actual API key
+
+# Initialize an empty DataFrame to store the combined forecast data
+all_forecast_df = pd.DataFrame()
+
+# Loop through each city and fetch the forecast data
+for city in cities:
+    city_forecast_df = fetch_10_day_forecast(city, api_key)
+    all_forecast_df = pd.concat([all_forecast_df, city_forecast_df], ignore_index=True)
+
+# Display the combined DataFrame
+display(all_forecast_df)
+
+# Find the best 7 consecutive days for each criteria
+best_city_temp, best_start_date_temp, best_average_temp = find_best_7_days(all_forecast_df, criteria='temp')
+best_city_humidity, best_start_date_humidity, best_average_humidity = find_best_7_days(all_forecast_df, criteria='humidity')
+best_city_wind_speed, best_all_forecast_dfstart_date_wind_speed, best_average_wind_speed = find_best_7_days(all_forecast_df, criteria='wind_speed')
+
+print(f"Best week based on high temperature: {best_city_temp}, starting from {best_start_date_temp} with average temp {best_average_temp}")
+print(f"Best week based on low humidity: {best_city_humidity}, starting from {best_start_date_humidity} with average humidity {best_average_humidity}")
+print(f"Best week based on low wind speed: {best_city_wind_speed}, starting from {best_start_date_wind_speed} with average wind speed {best_average_wind_speed}")
+
+# Save the combined forecast data to CSV
+all_forecast_df.to_csv('all_forecast_filtered.csv', index=False)
